@@ -44,7 +44,13 @@ function install_gzip()
     chmod +x ./build-aux/git-version-gen
     
     local libs='-lwd -lkaezip -lz'
-    local cflags='-O2 -I/usr/local/include/uadk/ -I/usr/local/kaezip/include'
+    # -isystem /usr/include: gnulib headers (lib/error.h etc.) reach the
+    # glibc ones via #include_next, which walks the default search order
+    # where /usr/local/include comes BEFORE /usr/include. A stale error.h
+    # (or any other gnulib header) installed under /usr/local/include then
+    # shadows glibc's and compilation fails with "'error' undeclared" in
+    # openat-die.c. -isystem lists /usr/include ahead of /usr/local/include.
+    local cflags='-O2 -I/usr/local/include/uadk/ -I/usr/local/kaezip/include -isystem /usr/include'
     local ldflags='-L/usr/local/kaezip/lib -L/usr/local/lib -Wl,-rpath=/usr/local/kaezip/lib'
 
     kaegzip_run_configure "${libs}" "${cflags}" "${ldflags}"
@@ -75,7 +81,7 @@ function dev_build_kaegzip()
     chmod +x ./build-aux/git-version-gen
 
     local libs="-lwd -lz -lkaezip"
-    local cflags="-O2 -I${KAE_BUILD_HEAD}/uadk -I${SRC_PATH}/../kae_build/kaezip/include"
+    local cflags="-O2 -I${KAE_BUILD_HEAD}/uadk -I${SRC_PATH}/../kae_build/kaezip/include -isystem /usr/include"
     local ldflags="-L${UADK_LIB} -L${SRC_PATH}/../kae_build/kaezip/lib"
     ldflags="${ldflags} -Wl,-rpath=/usr/local/kaezip/lib:/usr/local/lib:${SRC_PATH}/../kae_build/kaezip/lib:${UADK_LIB}"
 
