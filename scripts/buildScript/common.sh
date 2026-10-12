@@ -106,7 +106,8 @@ function kae_apply_uadk_patches()
 function build_check_OS_version()
 {
     local KERNEL_VERSION=""
-    if command -v rpm >/dev/null 2>&1; then
+    # kernel-devel is an RPM-distro concept; Debian/Ubuntu always use uname -r
+    if [ "${KAE_IS_DEBIAN}" != "1" ] && command -v rpm >/dev/null 2>&1; then
         KERNEL_VERSION=`rpm -q --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' kernel-devel 2>/dev/null | head -n 1 || true`
     fi
     if [ -z "$KERNEL_VERSION" ]; then

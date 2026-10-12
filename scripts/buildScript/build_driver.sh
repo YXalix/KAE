@@ -80,6 +80,16 @@ if [ "${KAE_IS_DEBIAN}" = "1" ] && [ "${KAE_FORCE_DRIVER_BUILD:-0}" != "1" ]; th
     fi
 fi
 
+# Building kernel modules needs headers for the running kernel:
+# linux-headers-$(uname -r) on Debian/Ubuntu, kernel-devel on RPM distros.
+if [ ! -e "/lib/modules/$(uname -r)/build/Makefile" ]; then
+    if [ "${KAE_IS_DEBIAN}" = "1" ]; then
+        kae_die "kernel headers for $(uname -r) not found; install with: apt install linux-headers-\$(uname -r)"
+    else
+        kae_die "kernel-devel for $(uname -r) not found; install with: yum install kernel-devel-\$(uname -r)"
+    fi
+fi
+
 # Debian/Ubuntu manage initramfs with initramfs-tools, not dracut; stub the
 # dracut calls inside the driver Makefile instead of rebuilding initramfs.
 DRACUT_MAKEVAR="dracut"
