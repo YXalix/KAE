@@ -75,6 +75,35 @@ case ":${LD_LIBRARY_PATH:-}:" in
         ;;
 esac
 
+function kae_check_shadowed_system_libs()
+{
+    # KAE-patched zlib/lz4/zstd keep the system SONAMEs (libz.so.1,
+    # liblz4.so.1, libzstd.so.1) but add a dependency on libkae*.so. A copy
+    # left in /usr/local/lib — searched before /usr/lib on Debian/Ubuntu,
+    # both in the default loader path and via a typical LD_LIBRARY_PATH —
+    # hijacks every process linking those libs. gcc's cc1 links
+    # libzstd.so.1, so builds die with "cc1: error while loading shared
+    # libraries: libkaezstd.so.2.2.0" until the copy is removed.
+    local f base marker out
+    for f in /usr/local/lib/libzstd.so.1 /usr/local/lib/liblz4.so.1 /usr/local/lib/libz.so.1; do
+        [ -e "$f" ] || continue
+        base="${f##*/}"
+        if command -v readelf >/dev/null 2>&1; then
+            # env -u: readelf itself links libzstd.so.1 (bfd), so it must not
+            # run under a poisoned LD_LIBRARY_PATH or it dies before telling
+            # us anything.
+            out=$(env -u LD_LIBRARY_PATH readelf -d "$f" 2>/dev/null || true)
+            if [ -n "$out" ]; then
+                marker=$(printf '%s\n' "$out" | grep -c "libkae" || true)
+                [ "${marker:-0}" -gt 0 ] || continue
+            fi
+            # empty readelf output: either unreadable or readelf itself is
+            # already hijacked via the ldconfig cache — treat as shadowed.
+        fi
+        kae_die "KAE-patched ${f} shadows the system ${base} and breaks the toolchain (cc1 links libzstd.so.1). Fix: rm -f /usr/local/lib/${base}* && ldconfig, then rebuild. Genuine copies live in /usr/lib/$(uname -m)-linux-gnu/."
+    done
+}
+
 function kae_jobs()
 {
     if [ -n "${BUILD_JOBS:-}" ]; then
@@ -191,6 +220,7 @@ function build_check_OS_version()
 
 function check_environment()
 {
+    kae_check_shadowed_system_libs
     if [ ! -r /proc/cpuinfo ]; then
         kae_warn "/proc/cpuinfo not available; skip Kunpeng CPU check"
         return 0
