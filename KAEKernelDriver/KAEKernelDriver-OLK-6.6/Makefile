@@ -1,5 +1,7 @@
 KERNEL_VERSION_BY_BUILDENV ?= $(shell uname -r)
 KERNEL_PATH := /lib/modules/$(KERNEL_VERSION_BY_BUILDENV)/build
+# Debian/Ubuntu: initramfs-tools owns initramfs; build scripts stub this to true
+DRACUT ?= dracut
 # KSP :=	$(shell if test -d /lib/modules/$(KERNEL_VERSION_BY_BUILDENV)/source; then  \
 #                     echo /lib/modules/$(KERNEL_VERSION_BY_BUILDENV)/source; \
 # 	        else  \
@@ -54,7 +56,7 @@ install:
 	-echo "options hisi_sec2 uacce_mode=1 pf_q_num=256" > /etc/modprobe.d/hisi_sec2.conf
 	-echo "options hisi_hpre uacce_mode=1 pf_q_num=256" > /etc/modprobe.d/hisi_hpre.conf
 	-echo "options hisi_zip  uacce_mode=1 pf_q_num=256" > /etc/modprobe.d/hisi_zip.conf
-	dracut -f
+	$(DRACUT) -f
 
 TARGET_MODULES := uacce.ko* hisi_qm.ko* hisi_sec2.ko* hisi_hpre.ko* hisi_zip.ko*
 
@@ -80,7 +82,7 @@ uninstall:
 	modprobe -r hisi_sec2
 	modprobe -r hisi_qm
 	modprobe -r uacce
-	dracut -f
+	$(DRACUT) -f
 	rm -rf /lib/modules/$(KERNEL_VERSION_BY_BUILDENV)/extra/uacce.ko
 	rm -rf /lib/modules/$(KERNEL_VERSION_BY_BUILDENV)/extra/hisi_qm.ko
 	rm -rf /lib/modules/$(KERNEL_VERSION_BY_BUILDENV)/extra/hisi_sec2.ko
@@ -111,6 +113,6 @@ nosva:
 	-echo "options hisi_sec2 uacce_mode=2 pf_q_num=256" > /etc/modprobe.d/hisi_sec2.conf
 	-echo "options hisi_hpre uacce_mode=2 pf_q_num=256" > /etc/modprobe.d/hisi_hpre.conf
 	-echo "options hisi_zip  uacce_mode=2 pf_q_num=256" > /etc/modprobe.d/hisi_zip.conf
-	dracut -f
+	$(DRACUT) -f
 clean:
 	rm -rf $(TARGET) 

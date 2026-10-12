@@ -1,6 +1,17 @@
-#!/bin/sh
+#!/bin/bash
 
 kaeversion=-1 # 初始化kae推荐安装的版本
+
+# 发行版检测：Debian/Ubuntu 用 dpkg/apt，其余走 rpm/yum 分支
+KAE_DISTRO="unknown"
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+    KAE_DISTRO="${ID:-unknown}"
+fi
+KAE_IS_DEBIAN=0
+case "${KAE_DISTRO}" in
+    debian|ubuntu) KAE_IS_DEBIAN=1 ;;
+esac
 
 successecho () {
  echo -e "\033[32m[检查通过] $1 \033[0m"
@@ -87,8 +98,37 @@ checkOS () {
     elif [[ $osname == *20.03* ]]; then
       successecho "应该安装使用KAE1.0"
       kaeversion=1
+    elif [[ "$KAE_IS_DEBIAN" == 1 ]]; then
+      # Debian/Ubuntu: 内核 >= 5.10 一律使用 KAE2.0
+      case "$(uname -r)" in
+        6.*|5.1*) successecho "Debian/Ubuntu 内核 $(uname -r)，应该安装使用KAE2.0"; kaeversion=2 ;;
+        *) warnecho "Debian/Ubuntu 内核 $(uname -r) 较老，需要手动判断安装哪个版本" ;;
+      esac
     else
       warnecho "需要手动判断安装哪个版本"
+    fi
+
+    if [[ "$KAE_IS_DEBIAN" == 1 ]]; then
+      # Debian/Ubuntu：内核头文件检查（等价于 openEuler 的 kernel-devel 检查）
+      if [ -e "/lib/modules/$(uname -r)/build/Makefile" ]; then
+        successecho "linux-headers-$(uname -r) 已安装（/lib/modules/$(uname -r)/build 存在）"
+      else
+        errorecho "未安装内核头文件!! 安装命令：apt install linux-headers-\$(uname -r)"
+      fi
+
+      dpkg_is_installed() { dpkg -s "$1" >/dev/null 2>&1; }
+      if dpkg_is_installed libnuma-dev; then
+        successecho "libnuma-dev 已安装"
+      else
+        errorecho "未安装 libnuma-dev, 编译uadk会报错!! 安装命令：apt install libnuma-dev"
+      fi
+      if dpkg_is_installed libssl-dev; then
+        successecho "libssl-dev 已安装"
+      else
+        errorecho "未安装 libssl-dev, 编译 engine 会报错!! 安装命令：apt install libssl-dev"
+      fi
+      warnecho "Debian/Ubuntu 完整编译依赖：apt install gcc g++ make patch autoconf automake libtool pkg-config numactl libnuma-dev libssl-dev linux-headers-\$(uname -r)"
+      return 0
     fi
 
     # 检查本机安装的 kernel-devel 版本是否与当前机器的 内核版本保持一致
@@ -206,13 +246,16 @@ checkEngine(){
   opensslversion=$(openssl version)
   echo "检查openssl version: ${opensslversion}"
 
-  engine=$(ls -l /usr/local/lib/engines-1.1)
+  # OpenSSL 3.x (Debian 12+/openEuler 24.03) 引擎目录为 engines-3.0
+  engineDir=/usr/local/lib/engines-3.0
+  [ -d "$engineDir" ] || engineDir=/usr/local/lib/engines-1.1
+  engine=$(ls -l $engineDir 2>/dev/null)
   if [[ ($engine = *kae.la*) && ($engine = *kae.so*) && ($engine = *kae.a*)]]; then
-    successecho "已默认安装openssl 的 kae 2.0 engine "
+    successecho "已默认安装openssl 的 kae 2.0 engine ($engineDir)"
   elif [[ ($engine = *kae.so*) && ($engine = *libkae.so*)]]; then
-    successecho "已默认安装openssl 的 kae 1.0 engine "
-  else 
-    errorecho "未检测到默认openssl引擎安装！！！确认引擎命令：ls -l /usr/local/lib/engines-1.1  ;安装引擎命令 sh build.sh engine"
+    successecho "已默认安装openssl 的 kae 1.0 engine ($engineDir)"
+  else
+    errorecho "未检测到默认openssl引擎安装！！！确认引擎命令：ls -l $engineDir  ;安装引擎命令 sh build.sh engine"
   fi
 }
 

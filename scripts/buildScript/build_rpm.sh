@@ -200,6 +200,11 @@ function build_rpm()
 check_environment
 build_check_OS_version
 
+# RPM packaging requires an RPM-based distro; Debian/Ubuntu use source install
+if [ "${KAE_IS_DEBIAN}" = "1" ] || ! command -v rpmbuild >/dev/null 2>&1; then
+    kae_die "RPM packaging is only supported on RPM-based distros (needs rpmbuild). On Debian/Ubuntu use source install: ./build.sh all"
+fi
+
 ACTION=$1
 
 case "$ACTION" in

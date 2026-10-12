@@ -29,6 +29,18 @@ KAE_BUILD_HEAD=${SRC_PATH}/kae_build/head
 IMPLEMENTER=""
 CPUPART=""
 
+# Distro detection (ID from /etc/os-release: openeuler, debian, ubuntu, ...)
+KAE_DISTRO="unknown"
+if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    KAE_DISTRO="${ID:-unknown}"
+fi
+KAE_IS_DEBIAN=0
+case "${KAE_DISTRO}" in
+    debian|ubuntu) KAE_IS_DEBIAN=1 ;;
+esac
+
 function kae_info() { echo "[KAE][INFO] $*"; }
 function kae_warn() { echo "[KAE][WARN] $*" 1>&2; }
 function kae_err()  { echo "[KAE][ERROR] $*" 1>&2; }
@@ -101,6 +113,27 @@ function build_check_OS_version()
         KERNEL_VERSION=`uname -r`
     fi
 
+    if [ "${KAE_IS_DEBIAN}" = "1" ]; then
+        # Debian/Ubuntu kernels (e.g. 6.1.0-18-arm64 on bookworm, 6.12 on
+        # trixie) map to the closest maintained driver tree; override the
+        # selection with KAE_KERNEL_DIR_OVERRIDE when another tree compiles
+        # better against the running distro kernel.
+        local tree=""
+        case "$KERNEL_VERSION" in
+            6.*)            tree="KAEKernelDriver-OLK-6.6" ;;
+            5.15.*|5.10.*)  tree="KAEKernelDriver-OLK-5.10" ;;
+            *) kae_die "unsupported Debian/Ubuntu kernel version: $KERNEL_VERSION" ;;
+        esac
+        KAE_KERNEL_DIR=${SRC_PATH}/KAEKernelDriver/${tree}
+        KAE_SPEC_FILE=""
+        OPENSSL_CONFIGURE_FLAG="--libdir=/usr/local/lib/engines-3.0 --enable-kae --enable-engine --with-openssl_install_dir=/usr/"
+        if [ -n "${KAE_KERNEL_DIR_OVERRIDE:-}" ]; then
+            KAE_KERNEL_DIR=${KAE_KERNEL_DIR_OVERRIDE}
+        fi
+        kae_warn "Debian/Ubuntu (distro=${KAE_DISTRO}): kernel ${KERNEL_VERSION} -> ${KAE_KERNEL_DIR}; build deps: apt install build-essential autoconf automake libtool pkg-config libnuma-dev libssl-dev linux-headers-\$(uname -r)"
+        return 0
+    fi
+
     if [[ "$KERNEL_VERSION" == 6.6.* ]]; then
         KAE_KERNEL_DIR=${SRC_PATH}/KAEKernelDriver/KAEKernelDriver-OLK-6.6
         KAE_SPEC_FILE=${SRC_PATH}/scripts/specFile/kae_openeuler2403.spec
@@ -156,4 +189,13 @@ function kae_is_zip_optional_component_unsupported_cpu()
     fi
 
     return 1
+}
+
+function kae_in_tree_zip_modules_present()
+{
+    # Debian/Ubuntu stock kernels may already ship uacce/hisi_zip; when they
+    # do, building KAE's out-of-tree copy against a distro kernel it was not
+    # written for is unnecessary (see also build_driver.sh).
+    command -v modinfo >/dev/null 2>&1 || return 1
+    modinfo hisi_zip >/dev/null 2>&1
 }
