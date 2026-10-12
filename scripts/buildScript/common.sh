@@ -46,6 +46,35 @@ function kae_warn() { echo "[KAE][WARN] $*" 1>&2; }
 function kae_err()  { echo "[KAE][ERROR] $*" 1>&2; }
 function kae_die()  { kae_err "$*"; exit 1; }
 
+# KAE component prefixes ship patched libraries whose SONAMEs collide with
+# system ones (libzstd.so.1, liblz4.so.1, libz.so.1). If those dirs leak into
+# LD_LIBRARY_PATH they shadow the system libraries for every subprocess —
+# including gcc's cc1, which links libzstd.so.1 on Debian/Ubuntu and then
+# dies with "cc1: error while loading shared libraries: libkaezstd.so.2.2.0"
+# (or an ICE from the patched lib's CPU-check constructor). Components link
+# through explicit -L/-rpath, so strip KAE prefixes from LD_LIBRARY_PATH.
+case ":${LD_LIBRARY_PATH:-}:" in
+    *":/usr/local/kae"*)
+        _kae_new_ldp=""
+        _kae_old_ifs="${IFS}"
+        IFS=":"
+        for _kae_d in ${LD_LIBRARY_PATH}; do
+            case "${_kae_d}" in
+                /usr/local/kae*) ;;
+                *) _kae_new_ldp="${_kae_new_ldp:+${_kae_new_ldp}:}${_kae_d}" ;;
+            esac
+        done
+        IFS="${_kae_old_ifs}"
+        if [ -n "${_kae_new_ldp}" ]; then
+            export LD_LIBRARY_PATH="${_kae_new_ldp}"
+        else
+            unset LD_LIBRARY_PATH
+        fi
+        unset _kae_new_ldp _kae_old_ifs _kae_d
+        kae_warn "stripped KAE prefix dirs from LD_LIBRARY_PATH (patched libs there shadow system SONAMEs and can break cc1); builds link via -L/-rpath instead"
+        ;;
+esac
+
 function kae_jobs()
 {
     if [ -n "${BUILD_JOBS:-}" ]; then
